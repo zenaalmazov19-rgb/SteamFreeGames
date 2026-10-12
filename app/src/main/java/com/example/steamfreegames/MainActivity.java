@@ -126,7 +126,7 @@ public class MainActivity extends Activity {
         tagline.setPadding(0, dp(3), 0, 0);
         brandText.addView(tagline);
         brandRow.addView(brandText, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        TextView version = text("2.3", 11, green);
+        TextView version = text("2.4", 11, green);
         version.setGravity(Gravity.CENTER);
         version.setPadding(dp(9), dp(6), dp(9), dp(6));
         version.setBackground(shape(card, 14, Color.rgb(42, 78, 57)));
@@ -159,6 +159,8 @@ public class MainActivity extends Activity {
         nav.addView(navButton("С карточками", "cards"));
         nav.addView(navButton("Раздачи", "giveaways"));
         nav.addView(navButton("Моя коллекция", "mine"));
+        nav.addView(navButton("Избранное", "favorites"));
+        nav.addView(navButton("Профиль", "profile"));
         navScroll.addView(nav);
         page.addView(navScroll);
         gap(12);
@@ -235,18 +237,32 @@ public class MainActivity extends Activity {
             info("Сторонние раздачи открываются на исходном сайте. Приложение не вводит пароли и не забирает игры автоматически.");
             return;
         }
+        if ("profile".equals(currentTab)) {
+            base("ПРОФИЛЬ STEAM", "Настройки и переход к официальному Steam.");
+            info("Безопасность прежде всего: приложение не просит пароль или код Steam Guard.");
+            action("🌐 Открыть официальный вход Steam", () -> open("https://steamcommunity.com/login/home/"));
+            action("👤 Открыть мой профиль Steam", () -> open("https://steamcommunity.com/my/"));
+            section("Подключение аккаунта к приложению");
+            info("Полноценная авторизация и автоматическая загрузка личной библиотеки ещё не подключены. Для этого нужно отдельно реализовать проверку Steam OpenID и учесть приватность профиля. Пока эти кнопки открывают только официальный сайт Steam — они не связывают аккаунт с приложением.");
+            action("← К играм", () -> showTab("games"));
+            return;
+        }
         if ("mine".equals(currentTab)) {
-            base("МОЯ КОЛЛЕКЦИЯ", "История хранится локально на этом телефоне.");
+            base("МОЯ КОЛЛЕКЦИЯ", "История игр и сохранённые отметки на этом телефоне.");
             action("➕ Добавить игру в историю", this::addHistory);
             action("📚 Открыть историю игр", this::history);
+            action("⭐ Открыть избранное (" + favoriteIds().size() + ")", () -> showTab("favorites"));
             action("💰 Оценить стоимость предметов", () -> open("https://steam.tools/itemvalue/"));
-            action("👤 Мой профиль Steam", () -> open("https://steamcommunity.com/my/"));
+            action("👤 Профиль и вход Steam", () -> showTab("profile"));
             action("🏅 Значки Steam", () -> open("https://steamcommunity.com/my/badges/"));
             action("🔔 Напоминания: " + (prefs.getBoolean("notifications", false) ? "ВКЛ" : "ВЫКЛ"), this::toggleNotifications);
             return;
         }
         boolean onlyCards = "cards".equals(currentTab);
-        base(onlyCards ? "ИГРЫ С КАРТОЧКАМИ" : "БЕСПЛАТНЫЕ ИГРЫ", onlyCards ? "Игры, у которых Steam Store указывает коллекционные карточки." : "Список загружается из Steam Store. Обнови его, чтобы проверить новые игры.");
+        boolean onlyFavorites = "favorites".equals(currentTab);
+        String screenTitle = onlyFavorites ? "ИЗБРАННЫЕ ИГРЫ" : onlyCards ? "ИГРЫ С КАРТОЧКАМИ" : "БЕСПЛАТНЫЕ ИГРЫ";
+        String screenSubtitle = onlyFavorites ? "Сохранённые игры доступны даже после перезапуска." : onlyCards ? "Игры, у которых Steam Store указывает коллекционные карточки." : "Список загружается из Steam Store. Обнови его, чтобы проверить новые игры.";
+        base(screenTitle, screenSubtitle);
         info("Последняя загрузка: " + prefs.getString("updated", "ещё не выполнялась"));
         // Quick stats make the list feel more like a game dashboard.
         LinearLayout stats = new LinearLayout(this);
@@ -260,26 +276,47 @@ public class MainActivity extends Activity {
         stats.addView(statCell("ПОИСК", searchQuery.isEmpty() ? "Все" : "Фильтр"), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         page.addView(stats);
         gap(8);
-        action("🔎 Найти игру по названию", this::showSearchDialog);
+        if (!onlyFavorites) action("🔎 Найти игру по названию", this::showSearchDialog);
         if (!searchQuery.isEmpty()) action("✕ Сбросить поиск: " + searchQuery, () -> { searchQuery = ""; renderCurrentTab(); });
-        action(loading ? "⏳ Поиск игр…" : "↻ Обновить список", this::loadGames);
+        if (!onlyFavorites) action(loading ? "⏳ Поиск игр…" : "↻ Обновить список", this::loadGames);
         if (loading && games.isEmpty()) info("Подключаемся к Steam Store и загружаем список…");
         if (!loadError.isEmpty()) {
             info("Не удалось загрузить игры: " + loadError);
             action("Открыть бесплатные игры Steam в браузере", () -> open("https://store.steampowered.com/search/?maxprice=free"));
         }
-        renderGameList(onlyCards);
-        info("Статус карточек проверяется по данным Steam Store. Если сайт временно не отвечает, нажми «Обновить список» позже.");
+        renderGameList(onlyCards, onlyFavorites);
+        if (!onlyFavorites) info("Статус карточек проверяется по данным Steam Store. Если сайт временно не отвечает, нажми «Обновить список» позже.");
     }
 
-    private void renderGameList(boolean onlyCards) {
+    private Set<String> favoriteIds() {
+        Set<String> saved = prefs.getStringSet("favorite_ids", new HashSet<>());
+        return new HashSet<>(saved == null ? new HashSet<>() : saved);
+    }
+
+    private void toggleFavorite(Game game) {
+        Set<String> saved = favoriteIds();
+        if (saved.contains(game.id)) saved.remove(game.id); else saved.add(game.id);
+        prefs.edit().putStringSet("favorite_ids", saved).apply();
+        Toast.makeText(this, saved.contains(game.id) ? "Добавлено в избранное" : "Удалено из избранного", Toast.LENGTH_SHORT).show();
+        renderCurrentTab();
+    }
+
+    private void renderGameList(boolean onlyCards, boolean onlyFavorites) {
+        Set<String> favorites = favoriteIds();
+        if (onlyFavorites && favorites.isEmpty()) {
+            info("Избранное пока пустое. Открой раздел «Игры» и нажми «☆ В избранное» у понравившейся игры.");
+            action("🎮 Перейти к играм", () -> showTab("games"));
+            return;
+        }
         if (games.isEmpty()) {
             if (!loading && loadError.isEmpty()) info("Пока список пуст. Нажми «Обновить список».");
+            if (onlyFavorites) info("Избранные игры появятся в этом списке, когда они будут загружены из Steam Store.");
             return;
         }
         int shown = 0;
         for (Game g : games) {
             if (onlyCards && g.cards != 1) continue;
+            if (onlyFavorites && !favorites.contains(g.id)) continue;
             if (!searchQuery.isEmpty() && !g.name.toLowerCase(java.util.Locale.ROOT).contains(searchQuery.toLowerCase(java.util.Locale.ROOT))) continue;
             LinearLayout box = new LinearLayout(this);
             box.setOrientation(LinearLayout.VERTICAL);
@@ -299,12 +336,17 @@ public class MainActivity extends Activity {
             Button openGame = smallButton("Открыть в Steam");
             openGame.setOnClickListener(v -> open("https://store.steampowered.com/app/" + g.id + "/"));
             box.addView(openGame);
+            Button favorite = smallButton(favorites.contains(g.id) ? "★ В избранном — убрать" : "☆ В избранное");
+            favorite.setOnClickListener(v -> toggleFavorite(g));
+            box.addView(favorite);
             Button details = smallButton("Страница игры в SteamDB");
             details.setOnClickListener(v -> open("https://steamdb.info/app/" + g.id + "/info/"));
             box.addView(details);
             shown++;
         }
-        if (shown == 0 && !searchQuery.isEmpty()) {
+        if (shown == 0 && onlyFavorites) {
+            info("Сохранённые игры пока не попали в текущий список. Обнови каталог, чтобы найти их снова.");
+        } else if (shown == 0 && !searchQuery.isEmpty()) {
             info("По запросу «" + searchQuery + "» ничего не найдено. Попробуй другое название или сбрось поиск.");
         } else if (onlyCards && shown == 0) {
             if (loading || hasUnknownCards()) info("Проверяем карточки у найденных игр. Список обновится автоматически.");
@@ -437,7 +479,7 @@ public class MainActivity extends Activity {
     private String request(String address) throws Exception {
         HttpURLConnection c = (HttpURLConnection) new URL(address).openConnection();
         c.setRequestMethod("GET"); c.setConnectTimeout(12000); c.setReadTimeout(12000);
-        c.setRequestProperty("User-Agent", "SteamFreeGames-Android/2.3");
+        c.setRequestProperty("User-Agent", "SteamFreeGames-Android/2.4");
         c.setRequestProperty("Accept", "application/json,text/html,*/*");
         try {
             int code = c.getResponseCode();
