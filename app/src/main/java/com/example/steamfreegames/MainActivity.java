@@ -11,6 +11,7 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -82,32 +83,88 @@ public class MainActivity extends Activity {
         return t;
     }
 
+    private GradientDrawable shape(int color, int radiusDp, int strokeColor) {
+        GradientDrawable d = new GradientDrawable();
+        d.setColor(color);
+        d.setCornerRadius(dp(radiusDp));
+        if (strokeColor != 0) d.setStroke(dp(1), strokeColor);
+        return d;
+    }
+
+    private void gap(int heightDp) {
+        View v = new View(this);
+        page.addView(v, new LinearLayout.LayoutParams(1, dp(heightDp)));
+    }
+
     private void base(String title, String subtitle) {
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
+        scroll.setClipToPadding(false);
         page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
-        page.setPadding(14, 12, 14, 24);
+        page.setPadding(dp(16), dp(14), dp(16), dp(28));
         page.setBackgroundColor(bg);
+
+        // Compact brand header with a clear visual hierarchy.
+        LinearLayout brandRow = new LinearLayout(this);
+        brandRow.setGravity(Gravity.CENTER_VERTICAL);
+        brandRow.setOrientation(LinearLayout.HORIZONTAL);
+        TextView mark = text("S", 21, bg);
+        mark.setGravity(Gravity.CENTER);
+        mark.setTypeface(null, Typeface.BOLD);
+        mark.setBackground(shape(green, 14, 0));
+        brandRow.addView(mark, new LinearLayout.LayoutParams(dp(42), dp(42)));
+        LinearLayout brandText = new LinearLayout(this);
+        brandText.setOrientation(LinearLayout.VERTICAL);
+        brandText.setPadding(dp(10), 0, 0, 0);
         TextView brand = text("STEAM FREE GAMES", 13, green);
         brand.setTypeface(null, Typeface.BOLD);
-        page.addView(brand);
-        TextView h = text(title, 25, pale);
-        h.setTypeface(null, Typeface.BOLD);
-        page.addView(h);
-        page.addView(text(subtitle, 14, muted));
+        brand.setPadding(0, 0, 0, 0);
+        brandText.addView(brand);
+        TextView tagline = text("Находи бесплатное · собирай коллекцию", 11, muted);
+        tagline.setPadding(0, dp(3), 0, 0);
+        brandText.addView(tagline);
+        brandRow.addView(brandText, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        TextView version = text("2.2", 11, green);
+        version.setGravity(Gravity.CENTER);
+        version.setPadding(dp(9), dp(6), dp(9), dp(6));
+        version.setBackground(shape(card, 14, Color.rgb(42, 78, 57)));
+        brandRow.addView(version);
+        page.addView(brandRow);
+        gap(18);
 
+        // Page title lives in a soft panel so the active screen is obvious.
+        LinearLayout hero = new LinearLayout(this);
+        hero.setOrientation(LinearLayout.VERTICAL);
+        hero.setPadding(dp(15), dp(13), dp(15), dp(13));
+        hero.setBackground(shape(Color.rgb(17, 38, 27), 18, Color.rgb(35, 72, 49)));
+        TextView h = text(title, 23, pale);
+        h.setTypeface(null, Typeface.BOLD);
+        h.setPadding(0, 0, 0, dp(4));
+        hero.addView(h);
+        TextView sub = text(subtitle, 13, muted);
+        sub.setPadding(0, 0, 0, 0);
+        hero.addView(sub);
+        page.addView(hero, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        gap(14);
+
+        // Scrollable top navigation keeps labels readable on narrow phones.
+        android.widget.HorizontalScrollView navScroll = new android.widget.HorizontalScrollView(this);
+        navScroll.setHorizontalScrollBarEnabled(false);
         LinearLayout nav = new LinearLayout(this);
         nav.setOrientation(LinearLayout.HORIZONTAL);
-        nav.setPadding(0, 7, 0, 9);
-        nav.addView(navButton("Игры", "games"), new LinearLayout.LayoutParams(0, dp(44), 1));
-        nav.addView(navButton("С карточками", "cards"), new LinearLayout.LayoutParams(0, dp(44), 1));
-        nav.addView(navButton("Раздачи", "giveaways"), new LinearLayout.LayoutParams(0, dp(44), 1));
-        nav.addView(navButton("Моё", "mine"), new LinearLayout.LayoutParams(0, dp(44), 1));
-        page.addView(nav);
+        nav.setGravity(Gravity.CENTER_VERTICAL);
+        nav.addView(navButton("Игры", "games"));
+        nav.addView(navButton("С карточками", "cards"));
+        nav.addView(navButton("Раздачи", "giveaways"));
+        nav.addView(navButton("Моя коллекция", "mine"));
+        navScroll.addView(nav);
+        page.addView(navScroll);
+        gap(12);
         View line = new View(this);
-        line.setBackgroundColor(Color.rgb(39, 75, 54));
+        line.setBackgroundColor(Color.rgb(35, 67, 47));
         page.addView(line, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)));
+        gap(8);
         scroll.addView(page);
         setContentView(scroll);
     }
@@ -116,27 +173,49 @@ public class MainActivity extends Activity {
 
     private Button navButton(String label, String tab) {
         Button b = new Button(this);
-        b.setText(label); b.setTextSize(11); b.setAllCaps(false);
-        b.setTextColor(currentTab.equals(tab) ? bg : pale);
-        b.setPadding(1, 0, 1, 0);
-        b.setBackgroundTintList(android.content.res.ColorStateList.valueOf(currentTab.equals(tab) ? green : card));
+        boolean active = currentTab.equals(tab);
+        b.setText(label);
+        b.setTextSize(12);
+        b.setAllCaps(false);
+        b.setTypeface(null, active ? Typeface.BOLD : Typeface.NORMAL);
+        b.setTextColor(active ? bg : pale);
+        b.setMinHeight(dp(40));
+        b.setMinimumHeight(dp(40));
+        b.setPadding(dp(12), 0, dp(12), 0);
+        b.setBackground(shape(active ? green : card, 22, active ? 0 : Color.rgb(43, 74, 54)));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40));
+        lp.setMargins(0, 0, dp(7), 0);
+        b.setLayoutParams(lp);
         b.setOnClickListener(v -> showTab(tab));
         return b;
     }
 
     private void section(String title) {
-        TextView t = text(title, 18, pale); t.setTypeface(null, Typeface.BOLD); page.addView(t);
+        TextView t = text(title, 17, pale);
+        t.setTypeface(null, Typeface.BOLD);
+        t.setPadding(dp(2), dp(13), dp(2), dp(5));
+        page.addView(t);
     }
-    private void info(String value) { page.addView(text(value, 14, muted)); }
+
+    private void info(String value) {
+        TextView t = text(value, 13, muted);
+        t.setPadding(dp(3), dp(5), dp(3), dp(7));
+        page.addView(t);
+    }
 
     private void action(String label, Runnable callback) {
         Button b = new Button(this);
-        b.setText(label); b.setAllCaps(false); b.setTextColor(pale); b.setTextSize(14);
+        b.setText(label);
+        b.setAllCaps(false);
+        b.setTextColor(pale);
+        b.setTextSize(14);
+        b.setTypeface(null, Typeface.BOLD);
         b.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
-        b.setPadding(15, 8, 15, 8);
-        b.setBackgroundTintList(android.content.res.ColorStateList.valueOf(card));
+        b.setPadding(dp(15), dp(8), dp(14), dp(8));
+        b.setMinHeight(dp(52));
+        b.setBackground(shape(card, 15, Color.rgb(39, 73, 52)));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.setMargins(0, dp(4), 0, dp(4));
+        lp.setMargins(0, dp(4), 0, dp(5));
         page.addView(b, lp);
         b.setOnClickListener(v -> callback.run());
     }
@@ -188,15 +267,19 @@ public class MainActivity extends Activity {
             if (onlyCards && g.cards != 1) continue;
             LinearLayout box = new LinearLayout(this);
             box.setOrientation(LinearLayout.VERTICAL);
-            box.setPadding(dp(8), dp(5), dp(8), dp(6));
-            box.setBackgroundTintList(android.content.res.ColorStateList.valueOf(card));
-            box.setBackgroundColor(card);
+            box.setPadding(dp(12), dp(10), dp(12), dp(11));
+            box.setBackground(shape(card, 17, Color.rgb(43, 79, 56)));
             LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            bp.setMargins(0, dp(5), 0, dp(5));
+            bp.setMargins(0, dp(6), 0, dp(6));
             page.addView(box, bp);
-            TextView name = text(g.name, 16, pale); name.setTypeface(null, Typeface.BOLD); box.addView(name);
-            String cardStatus = g.cards == 1 ? "✓ Есть Steam Trading Cards" : g.cards == 0 ? "— Карточки не найдены" : "… Проверяем наличие карточек";
-            box.addView(text("Бесплатно · AppID " + g.id + "\n" + cardStatus, 12, g.cards == 1 ? green : muted));
+            TextView name = text(g.name, 16, pale);
+            name.setTypeface(null, Typeface.BOLD);
+            name.setPadding(dp(2), dp(2), dp(2), dp(6));
+            box.addView(name);
+            String cardStatus = g.cards == 1 ? "✓ Есть Steam Trading Cards" : g.cards == 0 ? "Карточки не найдены" : "Проверяем наличие карточек…";
+            TextView status = text("БЕСПЛАТНО  ·  AppID " + g.id + "\n" + cardStatus, 12, g.cards == 1 ? green : muted);
+            status.setPadding(dp(2), 0, dp(2), dp(6));
+            box.addView(status);
             Button openGame = smallButton("Открыть в Steam");
             openGame.setOnClickListener(v -> open("https://store.steampowered.com/app/" + g.id + "/"));
             box.addView(openGame);
@@ -219,8 +302,18 @@ public class MainActivity extends Activity {
     }
 
     private Button smallButton(String label) {
-        Button b = new Button(this); b.setText(label); b.setAllCaps(false); b.setTextSize(12); b.setTextColor(green);
-        b.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.rgb(15, 32, 23)));
+        Button b = new Button(this);
+        b.setText(label);
+        b.setAllCaps(false);
+        b.setTextSize(12);
+        b.setTextColor(green);
+        b.setGravity(Gravity.CENTER);
+        b.setPadding(dp(8), dp(3), dp(8), dp(3));
+        b.setMinHeight(dp(40));
+        b.setBackground(shape(Color.rgb(13, 31, 21), 12, Color.rgb(42, 79, 55)));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.setMargins(0, dp(3), 0, dp(3));
+        b.setLayoutParams(lp);
         return b;
     }
 
