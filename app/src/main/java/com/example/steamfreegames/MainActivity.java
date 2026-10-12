@@ -10,6 +10,8 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
@@ -21,6 +23,7 @@ import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.ImageView;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -29,6 +32,8 @@ import org.json.JSONObject;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
@@ -52,6 +57,9 @@ public class MainActivity extends Activity {
     private LinearLayout page;
     private SharedPreferences prefs;
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
+    private final ExecutorService imageWorker = Executors.newFixedThreadPool(3);
+    private final Map<String, Bitmap> coverCache = new ConcurrentHashMap<>();
+    private final Set<String> coversLoading = ConcurrentHashMap.newKeySet();
     private final List<Game> games = new ArrayList<>();
     private String currentTab = "games";
     private boolean loading = false;
@@ -126,7 +134,7 @@ public class MainActivity extends Activity {
         tagline.setPadding(0, dp(3), 0, 0);
         brandText.addView(tagline);
         brandRow.addView(brandText, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        TextView version = text("2.4", 11, green);
+        TextView version = text("2.5", 11, green);
         version.setGravity(Gravity.CENTER);
         version.setPadding(dp(9), dp(6), dp(9), dp(6));
         version.setBackground(shape(card, 14, Color.rgb(42, 78, 57)));
@@ -325,6 +333,14 @@ public class MainActivity extends Activity {
             LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             bp.setMargins(0, dp(6), 0, dp(6));
             page.addView(box, bp);
+            ImageView cover = new ImageView(this);
+            cover.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            cover.setBackground(shape(Color.rgb(13, 31, 21), 12, Color.rgb(42, 79, 55)));
+            cover.setClipToOutline(true);
+            LinearLayout.LayoutParams coverParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(145));
+            coverParams.setMargins(0, 0, 0, dp(8));
+            box.addView(cover, coverParams);
+            loadCover(cover, g.id);
             TextView name = text(g.name, 16, pale);
             name.setTypeface(null, Typeface.BOLD);
             name.setPadding(dp(2), dp(2), dp(2), dp(6));
@@ -479,7 +495,7 @@ public class MainActivity extends Activity {
     private String request(String address) throws Exception {
         HttpURLConnection c = (HttpURLConnection) new URL(address).openConnection();
         c.setRequestMethod("GET"); c.setConnectTimeout(12000); c.setReadTimeout(12000);
-        c.setRequestProperty("User-Agent", "SteamFreeGames-Android/2.4");
+        c.setRequestProperty("User-Agent", "SteamFreeGames-Android/2.5");
         c.setRequestProperty("Accept", "application/json,text/html,*/*");
         try {
             int code = c.getResponseCode();
@@ -504,6 +520,46 @@ public class MainActivity extends Activity {
         if (message == null || message.trim().isEmpty()) return "нет ответа от сервера";
         if (message.toLowerCase().contains("unable to resolve") || message.toLowerCase().contains("failed to connect")) return "нет соединения с Steam Store";
         return message.length() > 180 ? message.substring(0, 180) : message;
+    }
+
+    private void loadCover(ImageView target, String appId) {
+        String address = "https://cdn.akamai.steamstatic.com/steam/apps/" + appId + "/header.jpg";
+        target.setTag(address);
+        Bitmap cached = coverCache.get(address);
+        if (cached != null) {
+            target.setImageBitmap(cached);
+            return;
+        }
+        target.setImageDrawable(null);
+        if (!coversLoading.add(address)) return;
+        imageWorker.execute(() -> {
+            Bitmap bitmap = null;
+            HttpURLConnection connection = null;
+            try {
+                connection = (HttpURLConnection) new URL(address).openConnection();
+                connection.setConnectTimeout(6000);
+                connection.setReadTimeout(6000);
+                connection.setRequestProperty("User-Agent", "SteamFreeGames-Android/2.5");
+                try (InputStream input = connection.getInputStream()) {
+                    bitmap = BitmapFactory.decodeStream(input);
+                }
+                if (bitmap != null) coverCache.put(address, bitmap);
+            } catch (Exception ignored) {
+                // Some games may not have a header image or the CDN may be unavailable.
+            } finally {
+                if (connection != null) connection.disconnect();
+                coversLoading.remove(address);
+            }
+            final Bitmap result = bitmap;
+            runOnUiThread(() -> {
+                if (isFinishing()) return;
+                if (result != null && address.equals(target.getTag())) {
+                    target.setImageBitmap(result);
+                } else if (result != null && target.getParent() == null) {
+                    // The list may have been redrawn while the image was loading; cached image appears on next redraw.
+                }
+            });
+        });
     }
 
     private void open(String url) {
@@ -584,6 +640,6 @@ public class MainActivity extends Activity {
 
     @Override protected void onDestroy() {
         super.onDestroy();
-        // The worker is intentionally retained until the process exits so a rotation does not cancel a fetch.
+        // Executor threads stop with the process; image cache is kept in memory only.
     }
 }
