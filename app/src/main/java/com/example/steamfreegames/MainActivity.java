@@ -56,6 +56,7 @@ public class MainActivity extends Activity {
     private String currentTab = "games";
     private boolean loading = false;
     private String loadError = "";
+    private String searchQuery = "";
     private static final String CHANNEL = "steam_free_games_reminders";
 
     private static class Game {
@@ -125,7 +126,7 @@ public class MainActivity extends Activity {
         tagline.setPadding(0, dp(3), 0, 0);
         brandText.addView(tagline);
         brandRow.addView(brandText, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        TextView version = text("2.2", 11, green);
+        TextView version = text("2.3", 11, green);
         version.setGravity(Gravity.CENTER);
         version.setPadding(dp(9), dp(6), dp(9), dp(6));
         version.setBackground(shape(card, 14, Color.rgb(42, 78, 57)));
@@ -247,6 +248,20 @@ public class MainActivity extends Activity {
         boolean onlyCards = "cards".equals(currentTab);
         base(onlyCards ? "ИГРЫ С КАРТОЧКАМИ" : "БЕСПЛАТНЫЕ ИГРЫ", onlyCards ? "Игры, у которых Steam Store указывает коллекционные карточки." : "Список загружается из Steam Store. Обнови его, чтобы проверить новые игры.");
         info("Последняя загрузка: " + prefs.getString("updated", "ещё не выполнялась"));
+        // Quick stats make the list feel more like a game dashboard.
+        LinearLayout stats = new LinearLayout(this);
+        stats.setOrientation(LinearLayout.HORIZONTAL);
+        stats.setPadding(dp(10), dp(10), dp(10), dp(10));
+        stats.setBackground(shape(Color.rgb(15, 32, 23), 15, Color.rgb(38, 70, 49)));
+        int cardCount = 0;
+        for (Game g : games) if (g.cards == 1) cardCount++;
+        stats.addView(statCell("НАЙДЕНО", String.valueOf(games.size())), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        stats.addView(statCell("С КАРТОЧКАМИ", String.valueOf(cardCount)), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        stats.addView(statCell("ПОИСК", searchQuery.isEmpty() ? "Все" : "Фильтр"), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        page.addView(stats);
+        gap(8);
+        action("🔎 Найти игру по названию", this::showSearchDialog);
+        if (!searchQuery.isEmpty()) action("✕ Сбросить поиск: " + searchQuery, () -> { searchQuery = ""; renderCurrentTab(); });
         action(loading ? "⏳ Поиск игр…" : "↻ Обновить список", this::loadGames);
         if (loading && games.isEmpty()) info("Подключаемся к Steam Store и загружаем список…");
         if (!loadError.isEmpty()) {
@@ -265,6 +280,7 @@ public class MainActivity extends Activity {
         int shown = 0;
         for (Game g : games) {
             if (onlyCards && g.cards != 1) continue;
+            if (!searchQuery.isEmpty() && !g.name.toLowerCase(java.util.Locale.ROOT).contains(searchQuery.toLowerCase(java.util.Locale.ROOT))) continue;
             LinearLayout box = new LinearLayout(this);
             box.setOrientation(LinearLayout.VERTICAL);
             box.setPadding(dp(12), dp(10), dp(12), dp(11));
@@ -288,12 +304,43 @@ public class MainActivity extends Activity {
             box.addView(details);
             shown++;
         }
-        if (onlyCards && shown == 0) {
+        if (shown == 0 && !searchQuery.isEmpty()) {
+            info("По запросу «" + searchQuery + "» ничего не найдено. Попробуй другое название или сбрось поиск.");
+        } else if (onlyCards && shown == 0) {
             if (loading || hasUnknownCards()) info("Проверяем карточки у найденных игр. Список обновится автоматически.");
             else info("В текущем списке не найдено игр с карточками Steam. Попробуй обновить список позже.");
         } else if (shown > 0) {
             info("Показано игр: " + shown);
         }
+    }
+
+    private View statCell(String label, String value) {
+        LinearLayout cell = new LinearLayout(this);
+        cell.setOrientation(LinearLayout.VERTICAL);
+        TextView top = text(label, 9, muted);
+        top.setTypeface(null, Typeface.BOLD);
+        top.setPadding(dp(2), 0, dp(2), dp(3));
+        TextView bottom = text(value, 17, green);
+        bottom.setTypeface(null, Typeface.BOLD);
+        bottom.setPadding(dp(2), 0, dp(2), 0);
+        cell.addView(top);
+        cell.addView(bottom);
+        return cell;
+    }
+
+    private void showSearchDialog() {
+        EditText input = new EditText(this);
+        input.setSingleLine(true);
+        input.setText(searchQuery);
+        input.setHint("Например, Dota");
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("Найти игру")
+                .setMessage("Поиск работает по уже загруженному списку Steam.")
+                .setView(input)
+                .setNegativeButton("Отмена", (d, w) -> {})
+                .setNeutralButton("Очистить", (d, w) -> { searchQuery = ""; renderCurrentTab(); })
+                .setPositiveButton("Найти", (d, w) -> { searchQuery = input.getText().toString().trim(); renderCurrentTab(); })
+                .show();
     }
 
     private boolean hasUnknownCards() {
@@ -390,7 +437,7 @@ public class MainActivity extends Activity {
     private String request(String address) throws Exception {
         HttpURLConnection c = (HttpURLConnection) new URL(address).openConnection();
         c.setRequestMethod("GET"); c.setConnectTimeout(12000); c.setReadTimeout(12000);
-        c.setRequestProperty("User-Agent", "SteamFreeGames-Android/2.1");
+        c.setRequestProperty("User-Agent", "SteamFreeGames-Android/2.3");
         c.setRequestProperty("Accept", "application/json,text/html,*/*");
         try {
             int code = c.getResponseCode();
